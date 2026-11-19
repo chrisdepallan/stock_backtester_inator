@@ -182,7 +182,7 @@ The most common way a backtest like this lies is look-ahead bias, so it gets its
 - [x] Look-ahead test: changing any price after day-1 close does not change that day's signal
 - [x] Leverage test: a −21% move at 5x gives a wipe-out with loss above 100% of margin
 - [x] Same config and seed always give identical summary.csv (verified by diffing two sweep runs)
-- [ ] `mbt fetch && mbt sweep && mbt report` runs end to end and writes report.md with a verdict (verified on a 3-ticker smoke config; full NIFTY 50 run pending)
+- [x] `mbt fetch && mbt sweep && mbt report` runs end to end and writes report.md with a verdict (ran on the full NIFTY 50 universe; verdict: REJECTED)
 
 **Build order for Claude Code** (one step per session or commit):
 
@@ -195,4 +195,4 @@ The most common way a backtest like this lies is look-ahead bias, so it gets its
 7. [x] `baseline.py` (random entries and index).
 8. [x] `metrics.py`, `mbt sweep`, in-sample/out-of-sample split.
 9. [x] `report.py` and the verdict rule.
-10. [ ] Run on the full NIFTY 50 and read the report.
+10. [x] Run on the full NIFTY 50 and read the report. **Verdict: REJECTED.** Best in-sample config (variant B, 3% threshold, 1x) posted an out-of-sample net expectancy of -0.37% per trade, beat only ~20% of random-entry runs, and lost money even before the H1/H2 pattern's statistical significance is considered. The underlying pattern itself is real but tiny (mean day-2 return after a day-1 up move: +0.07%, p<1e-26, n=72k) — far too small to clear round-trip transaction costs, and the "take the biggest day-1 gainers first" position-sizing rule actively selects for stocks more prone to short-term reversal, so the strategy underperforms even the random-entry baseline.

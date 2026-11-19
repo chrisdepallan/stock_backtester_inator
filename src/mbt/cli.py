@@ -15,13 +15,16 @@ app = typer.Typer(help="NSE short-term momentum backtest")
 
 
 def _load_universe(cfg: Config) -> dict[str, pd.DataFrame]:
-    return fetch_universe(
-        cfg.universe.tickers + [cfg.universe.benchmark],
-        start=cfg.data.start_date,
-        end=cfg.data.end_date,
-        cache_dir=cfg.data.cache_dir,
-        auto_adjust=cfg.data.auto_adjust,
-    )
+    tickers = cfg.universe.tickers + [cfg.universe.benchmark]
+    with typer.progressbar(length=len(tickers), label="Fetching data") as progress:
+        return fetch_universe(
+            tickers,
+            start=cfg.data.start_date,
+            end=cfg.data.end_date,
+            cache_dir=cfg.data.cache_dir,
+            auto_adjust=cfg.data.auto_adjust,
+            on_ticker_done=lambda _ticker: progress.update(1),
+        )
 
 
 @app.command()
@@ -46,13 +49,15 @@ def stats(
 ) -> None:
     """Print the H1/H2 pattern statistics only."""
     cfg = load_config(config_path)
-    data = fetch_universe(
-        cfg.universe.tickers,
-        start=cfg.data.start_date,
-        end=cfg.data.end_date,
-        cache_dir=cfg.data.cache_dir,
-        auto_adjust=cfg.data.auto_adjust,
-    )
+    with typer.progressbar(length=len(cfg.universe.tickers), label="Fetching data") as progress:
+        data = fetch_universe(
+            cfg.universe.tickers,
+            start=cfg.data.start_date,
+            end=cfg.data.end_date,
+            cache_dir=cfg.data.cache_dir,
+            auto_adjust=cfg.data.auto_adjust,
+            on_ticker_done=lambda _ticker: progress.update(1),
+        )
     result = pattern_stats(data)
 
     typer.echo(f"Days analysed: {result.n_days}")
@@ -111,8 +116,9 @@ def sweep(
     data = _load_universe(cfg)
     stock_data = {t: data[t] for t in cfg.universe.tickers}
 
-    typer.echo("Running sweep (this samples 1,000 random-entry runs per variant x threshold)...")
-    summary_df, trades_df = run_sweep(stock_data, cfg)
+    total_combos = len(cfg.variants) * len(cfg.signals.thresholds) * len(cfg.leverage.levels)
+    with typer.progressbar(length=total_combos, label="Running sweep") as progress:
+        summary_df, trades_df = run_sweep(stock_data, cfg, on_combo_done=lambda: progress.update(1))
 
     out_dir = Path(reports_dir)
     out_dir.mkdir(parents=True, exist_ok=True)

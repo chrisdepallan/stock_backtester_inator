@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import time
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 
@@ -161,16 +162,20 @@ def fetch_universe(
     cache_dir: str | Path,
     auto_adjust: bool = True,
     request_delay: float = 0.5,
+    on_ticker_done: Callable[[str], None] | None = None,
 ) -> dict[str, pd.DataFrame]:
     """Fetch (cached) and clean OHLCV data for every ticker in `tickers`.
 
     `request_delay` pauses between tickers that actually hit the network,
     to stay under Yahoo Finance's rate limit; fully cached tickers incur
-    no delay.
+    no delay. `on_ticker_done`, if given, is called after each ticker so
+    callers can drive a progress bar.
     """
     cache = ParquetCache(YFinanceSource(auto_adjust=auto_adjust), cache_dir, request_delay=request_delay)
     out: dict[str, pd.DataFrame] = {}
     for ticker in tickers:
         raw = cache.get(ticker, start, end)
         out[ticker] = clean_ohlcv(raw, ticker)
+        if on_ticker_done is not None:
+            on_ticker_done(ticker)
     return out

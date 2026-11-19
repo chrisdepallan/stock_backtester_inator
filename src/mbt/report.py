@@ -4,6 +4,7 @@ equity_curve.png, and report.md with the verdict.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 
 import matplotlib
@@ -69,13 +70,19 @@ def _split_metrics_row(trades_priced: pd.DataFrame, cfg: Config) -> dict:
     }
 
 
-def run_sweep(data: dict[str, pd.DataFrame], cfg: Config) -> tuple[pd.DataFrame, pd.DataFrame]:
+def run_sweep(
+    data: dict[str, pd.DataFrame],
+    cfg: Config,
+    on_combo_done: Callable[[], None] | None = None,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Run every variant x threshold x leverage combination.
 
     Returns (summary_df, trades_df) — one summary row and a slice of priced
     trades per combination. Random-entry baselines are drawn once per
     (variant, threshold) from a shared seeded generator and re-priced (cheaply,
     vectorized) at every leverage level for the percentile-vs-random column.
+    `on_combo_done`, if given, is called after each variant/threshold/leverage
+    combination so callers can drive a progress bar.
     """
     cap = capital_per_trade(cfg)
     rows: list[dict] = []
@@ -126,6 +133,8 @@ def run_sweep(data: dict[str, pd.DataFrame], cfg: Config) -> tuple[pd.DataFrame,
                 row["oos_percentile_vs_random"] = oos_percentile
 
                 rows.append(row)
+                if on_combo_done is not None:
+                    on_combo_done()
 
     summary_df = pd.DataFrame(rows, columns=SUMMARY_COLUMNS)
     trades_df = pd.concat(trades_frames, ignore_index=True) if trades_frames else pd.DataFrame()
