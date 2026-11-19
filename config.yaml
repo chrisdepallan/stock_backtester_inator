@@ -1,0 +1,111 @@
+# NSE short-term momentum backtest configuration
+# See "NSE Short-Term Momentum Backtest — Project Spec.md" for the rationale behind every value.
+
+universe:
+  # NIFTY 50 constituents, NSE tickers with the .NS suffix.
+  tickers:
+    - RELIANCE.NS
+    - TCS.NS
+    - HDFCBANK.NS
+    - ICICIBANK.NS
+    - INFY.NS
+    - HINDUNILVR.NS
+    - ITC.NS
+    - SBIN.NS
+    - BHARTIARTL.NS
+    - BAJFINANCE.NS
+    - KOTAKBANK.NS
+    - LT.NS
+    - HCLTECH.NS
+    - AXISBANK.NS
+    - ASIANPAINT.NS
+    - MARUTI.NS
+    - SUNPHARMA.NS
+    - TITAN.NS
+    - ULTRACEMCO.NS
+    - WIPRO.NS
+    - NESTLEIND.NS
+    - M&M.NS
+    - ADANIENT.NS
+    - TATAMOTORS.NS
+    - BAJAJFINSV.NS
+    - POWERGRID.NS
+    - NTPC.NS
+    - JSWSTEEL.NS
+    - ONGC.NS
+    - TATASTEEL.NS
+    - COALINDIA.NS
+    - GRASIM.NS
+    - HINDALCO.NS
+    - TECHM.NS
+    - DRREDDY.NS
+    - CIPLA.NS
+    - EICHERMOT.NS
+    - BRITANNIA.NS
+    - DIVISLAB.NS
+    - APOLLOHOSP.NS
+    - HEROMOTOCO.NS
+    - BAJAJ-AUTO.NS
+    - SBILIFE.NS
+    - HDFCLIFE.NS
+    - INDUSINDBK.NS
+    - TATACONSUM.NS
+    - BPCL.NS
+    - SHREECEM.NS
+    - ADANIPORTS.NS
+    - UPL.NS
+  benchmark: "^NSEI"
+
+data:
+  start_date: "2015-01-01"
+  end_date: null  # null = latest available
+  auto_adjust: true
+  cache_dir: "data/raw"
+  source: "yfinance"  # or "kite"
+
+signals:
+  thresholds: [0.00, 0.01, 0.02, 0.03]
+  filters:
+    volume_above_20d_avg: false
+    top_quartile_range: false
+    skip_gap_up_pct: null  # e.g. 0.02 to skip entries gapping up >2%; null disables
+
+variants: ["A", "B", "C", "D"]
+
+leverage:
+  levels: [1, 2, 5]
+  margin_call_threshold: 0.50  # fraction of margin lost that counts as a margin call
+
+position_sizing:
+  starting_capital: 100000  # INR
+  max_open_positions: 5
+
+costs:
+  intraday:
+    brokerage_pct: 0.0003
+    brokerage_flat: 20
+    stt_sell_pct: 0.00025
+    exchange_txn_pct: 0.00003
+    sebi_fee_per_crore: 10
+    stamp_duty_buy_pct: 0.00003
+    gst_pct: 0.18
+    slippage_pct: 0.0005
+  overnight:
+    brokerage_pct: 0.0003
+    brokerage_flat: 20
+    stt_pct: 0.001
+    exchange_txn_pct: 0.00003
+    sebi_fee_per_crore: 10
+    stamp_duty_buy_pct: 0.00015
+    gst_pct: 0.18
+    slippage_pct: 0.0005
+    mtf_annual_interest_pct: 0.18  # placeholder — confirm against Zerodha's current MTF rate
+
+validation:
+  in_sample_end: "2021-12-31"
+  out_of_sample_start: "2022-01-01"
+  random_baseline_runs: 1000
+  random_seed: 42
+
+portfolio:
+  risk_free_rate_annual: 0.07
