@@ -178,21 +178,21 @@ The most common way a backtest like this lies is look-ahead bias, so it gets its
 
 **Acceptance criteria:**
 
-- [ ] `pytest` passes, including a cost test that matches Zerodha's calculator for one known trade to within ₹1
-- [ ] Look-ahead test: changing any price after day-1 close does not change that day's signal
-- [ ] Leverage test: a −21% move at 5x gives a wipe-out with loss above 100% of margin
+- [x] `pytest` passes, including a cost test that matches Zerodha's calculator for one known trade to within ₹1 (hand-derived from the published formula; still needs cross-check against the live calculator)
+- [x] Look-ahead test: changing any price after day-1 close does not change that day's signal
+- [x] Leverage test: a −21% move at 5x gives a wipe-out with loss above 100% of margin
 - [ ] Same config and seed always give identical summary.csv
 - [ ] `mbt fetch && mbt sweep && mbt report` runs end to end and writes report.md with a verdict
 
 **Build order for Claude Code** (one step per session or commit):
 
-1. Scaffold the package, `pyproject.toml`, `config.yaml`, and the typer CLI with empty commands.
-2. `data.py` with Parquet caching; `mbt fetch` working for 3 tickers.
-3. `signals.py` and `mbt stats`, plus the look-ahead test. Check the H1/H2 numbers before going further.
-4. `backtest.py` for variant A at 1x, no costs.
-5. `costs.py` with the cost test.
-6. Variants B, C and D, and `leverage.py` with its tests.
-7. `baseline.py` (random entries and index).
-8. `metrics.py`, `mbt sweep`, in-sample/out-of-sample split.
-9. `report.py` and the verdict rule.
-10. Run on the full NIFTY 50 and read the report.
+1. [x] Scaffold the package, `pyproject.toml`, `config.yaml`, and the typer CLI with empty commands.
+2. [x] `data.py` with Parquet caching; `mbt fetch` working for 3 tickers.
+3. [x] `signals.py` and `mbt stats`, plus the look-ahead test. Check the H1/H2 numbers before going further.
+4. [x] `backtest.py` for variant A at 1x, no costs.
+5. [x] `costs.py` with the cost test.
+6. [x] Variants B, C and D, and `leverage.py` with its tests.
+7. [ ] `baseline.py` (random entries and index).
+8. [ ] `metrics.py`, `mbt sweep`, in-sample/out-of-sample split.
+9. [ ] `report.py` and the verdict rule.
+10. [ ] Run on the full NIFTY 50 and read the report.
