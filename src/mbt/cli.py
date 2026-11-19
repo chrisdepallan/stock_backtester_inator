@@ -1,10 +1,27 @@
+from pathlib import Path
+
+import pandas as pd
 import typer
 
-from mbt.config import load_config
+from mbt.backtest import generate_trades
+from mbt.config import Config, load_config
 from mbt.data import fetch_universe
+from mbt.leverage import apply_leverage_and_costs
+from mbt.metrics import build_equity_curve, portfolio_metrics, trade_metrics
+from mbt.report import build_equity_chart, build_report_markdown, capital_per_trade, run_sweep, write_summary_csv, write_trades_csv
 from mbt.signals import pattern_stats
 
 app = typer.Typer(help="NSE short-term momentum backtest")
+
+
+def _load_universe(cfg: Config) -> dict[str, pd.DataFrame]:
+    return fetch_universe(
+        cfg.universe.tickers + [cfg.universe.benchmark],
+        start=cfg.data.start_date,
+        end=cfg.data.end_date,
+        cache_dir=cfg.data.cache_dir,
+        auto_adjust=cfg.data.auto_adjust,
+    )
 
 
 @app.command()
@@ -14,17 +31,10 @@ def fetch(
 ) -> None:
     """Download or update cached data for the universe."""
     cfg = load_config(config_path)
-    tickers = cfg.universe.tickers + [cfg.universe.benchmark]
     if limit:
-        tickers = tickers[:limit]
+        cfg = cfg.model_copy(update={"universe": cfg.universe.model_copy(update={"tickers": cfg.universe.tickers[:limit]})})
 
-    data = fetch_universe(
-        tickers,
-        start=cfg.data.start_date,
-        end=cfg.data.end_date,
-        cache_dir=cfg.data.cache_dir,
-        auto_adjust=cfg.data.auto_adjust,
-    )
+    data = _load_universe(cfg)
     for ticker, df in data.items():
         span = f"{df.index.min().date()} to {df.index.max().date()}" if not df.empty else "no data"
         typer.echo(f"{ticker}: {len(df)} rows ({span})")
@@ -65,21 +75,76 @@ def run(
     variant: str = typer.Option(..., help="Variant to run: A, B, C or D"),
     threshold: float = typer.Option(..., help="Day-1 return threshold, e.g. 0.01"),
     leverage: float = typer.Option(1.0, help="Leverage level, e.g. 1, 2 or 5"),
+    config_path: str = typer.Option("config.yaml", "--config", help="Path to config.yaml"),
 ) -> None:
     """Run one backtest and print the summary."""
-    raise NotImplementedError
+    cfg = load_config(config_path)
+    data = _load_universe(cfg)
+    stock_data = {t: data[t] for t in cfg.universe.tickers}
+
+    trades_raw = generate_trades(stock_data, variant, threshold, cfg.signals.filters, cfg.position_sizing.max_open_positions)
+    cap = capital_per_trade(cfg)
+    trades = apply_leverage_and_costs(trades_raw, leverage, cap, cfg.costs, cfg.leverage.margin_call_threshold)
+
+    tm = trade_metrics(trades)
+    pm = portfolio_metrics(build_equity_curve(trades, cap, cfg.position_sizing.starting_capital), cfg.portfolio.risk_free_rate_annual)
+
+    typer.echo(f"Variant {variant}, threshold {threshold:.2%}, leverage {leverage:.0f}x")
+    typer.echo(f"Trades: {tm.n_trades}")
+    typer.echo(f"Win rate: {tm.win_rate:.2%}")
+    typer.echo(f"Avg gross / net return per trade: {tm.avg_gross_ret:.4%} / {tm.avg_net_ret:.4%}")
+    typer.echo(f"Expectancy: {tm.expectancy:.4%}")
+    typer.echo(f"Profit factor: {tm.profit_factor:.2f}")
+    typer.echo(f"Worst trade (% of margin): {tm.worst_trade_margin_pnl:.2%}")
+    typer.echo(f"Wipe-outs: {tm.n_wipeouts}, margin calls: {tm.n_margin_calls}")
+    typer.echo(f"Final equity: Rs {pm.final_equity:,.0f} (started at Rs {cfg.position_sizing.starting_capital:,.0f})")
+    typer.echo(f"CAGR: {pm.cagr:.2%}, max drawdown: {pm.max_drawdown:.2%}, Sharpe: {pm.sharpe:.2f}")
 
 
 @app.command()
-def sweep() -> None:
-    """Run all variants x thresholds x leverage levels and write summary.csv."""
-    raise NotImplementedError
+def sweep(
+    config_path: str = typer.Option("config.yaml", "--config", help="Path to config.yaml"),
+    reports_dir: str = typer.Option("reports", help="Directory to write summary.csv and trades.csv into"),
+) -> None:
+    """Run all variants x thresholds x leverage levels and write summary.csv + trades.csv."""
+    cfg = load_config(config_path)
+    data = _load_universe(cfg)
+    stock_data = {t: data[t] for t in cfg.universe.tickers}
+
+    typer.echo("Running sweep (this samples 1,000 random-entry runs per variant x threshold)...")
+    summary_df, trades_df = run_sweep(stock_data, cfg)
+
+    out_dir = Path(reports_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    write_summary_csv(summary_df, out_dir / "summary.csv")
+    write_trades_csv(trades_df, out_dir / "trades.csv")
+
+    typer.echo(f"Wrote {len(summary_df)} summary rows to {out_dir / 'summary.csv'}")
+    typer.echo(f"Wrote {len(trades_df)} trades to {out_dir / 'trades.csv'}")
 
 
 @app.command()
-def report() -> None:
+def report(
+    config_path: str = typer.Option("config.yaml", "--config", help="Path to config.yaml"),
+    reports_dir: str = typer.Option("reports", help="Directory with summary.csv/trades.csv, and where report.md is written"),
+) -> None:
     """Build report.md and the equity curve chart from the latest sweep."""
-    raise NotImplementedError
+    cfg = load_config(config_path)
+    data = _load_universe(cfg)  # includes the benchmark, needed for the buy-and-hold curve
+
+    out_dir = Path(reports_dir)
+    summary_df = pd.read_csv(out_dir / "summary.csv")
+    trades_df = pd.read_csv(out_dir / "trades.csv", parse_dates=["signal_date", "entry_date", "exit_date"])
+
+    chart_filename = "equity_curve.png"
+    selected = summary_df.loc[summary_df["leverage"] == 1].dropna(subset=["is_expectancy"])
+    if not selected.empty:
+        best = selected.loc[selected["is_expectancy"].idxmax()]
+        build_equity_chart(data, cfg, best, trades_df, out_dir / chart_filename)
+
+    report_text = build_report_markdown(data, cfg, summary_df, chart_filename)
+    (out_dir / "report.md").write_text(report_text, encoding="utf-8")
+    typer.echo(f"Wrote {out_dir / 'report.md'}")
 
 
 if __name__ == "__main__":

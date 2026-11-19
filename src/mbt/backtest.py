@@ -38,6 +38,49 @@ def _is_halted(row: pd.Series) -> bool:
     return row["open"] == row["high"] == row["low"] == row["close"]
 
 
+def resolve_trade_exit(
+    df: pd.DataFrame, entry_pos: int, variant: str
+) -> tuple[pd.Timestamp, float, pd.Timestamp, float] | None:
+    """Given a df and the row position of the entry day (day 2), resolve the
+    entry/exit date and price for `variant`, or None if the trade is unusable
+    (a halt, or the data needed for the exit doesn't exist yet).
+
+    Shared by signal-driven trades (`generate_candidate_trades`) and the
+    random-entry baseline, so both use identical variant exit rules.
+    """
+    if variant not in VALID_VARIANTS:
+        raise ValueError(f"Unknown variant: {variant}")
+
+    idx = df.index
+    n = len(df)
+    day2 = df.iloc[entry_pos]
+    if _is_halted(day2):
+        return None
+
+    entry_price = float(day2["open"])
+    entry_date = idx[entry_pos]
+
+    if variant == "A":
+        return entry_date, entry_price, entry_date, float(day2["close"])
+
+    day3_pos = entry_pos + 1
+    if day3_pos >= n:
+        return None  # no day-3 bar yet
+    day3 = df.iloc[day3_pos]
+
+    if variant == "B":
+        return entry_date, entry_price, idx[day3_pos], float(day3["open"])
+    if variant == "C":
+        return entry_date, entry_price, idx[day3_pos], float(day3["close"])
+
+    # D: exit day-2 close if day 2 is up (close above entry price), else day-3 close
+    if day2["close"] > entry_price:
+        return entry_date, entry_price, entry_date, float(day2["close"])
+    if _is_halted(day3):
+        return None
+    return entry_date, entry_price, idx[day3_pos], float(day3["close"])
+
+
 def generate_candidate_trades(
     df: pd.DataFrame,
     ticker: str,
@@ -51,7 +94,6 @@ def generate_candidate_trades(
 
     signal = compute_signal(df, threshold, filters)
     ret_d1 = compute_day1_return(df)
-    idx = df.index
     n = len(df)
     sig_positions = np.flatnonzero(signal.to_numpy())
 
@@ -60,47 +102,28 @@ def generate_candidate_trades(
         day2_pos = i + 1
         if day2_pos >= n:
             continue  # no day-2 bar yet
-        day2 = df.iloc[day2_pos]
-        if _is_halted(day2):
-            continue
 
-        entry_price = day2["open"]
         if filters.skip_gap_up_pct is not None:
             day1_close = df.iloc[i]["close"]
-            gap = entry_price / day1_close - 1
+            day2_open = df.iloc[day2_pos]["open"]
+            gap = day2_open / day1_close - 1
             if gap > filters.skip_gap_up_pct:
                 continue
-        entry_date = idx[day2_pos]
 
-        if variant == "A":
-            exit_date, exit_price = entry_date, day2["close"]
-        else:
-            day3_pos = i + 2
-            if day3_pos >= n:
-                continue  # no day-3 bar yet
-            day3 = df.iloc[day3_pos]
-            if variant == "B":
-                exit_date, exit_price = idx[day3_pos], day3["open"]
-            elif variant == "C":
-                exit_date, exit_price = idx[day3_pos], day3["close"]
-            else:  # D
-                day2_is_up = day2["close"] > entry_price
-                if day2_is_up:
-                    exit_date, exit_price = entry_date, day2["close"]
-                else:
-                    if _is_halted(day3):
-                        continue
-                    exit_date, exit_price = idx[day3_pos], day3["close"]
+        resolved = resolve_trade_exit(df, day2_pos, variant)
+        if resolved is None:
+            continue
+        entry_date, entry_price, exit_date, exit_price = resolved
 
         gross_ret = exit_price / entry_price - 1
         rows.append(
             {
                 "ticker": ticker,
-                "signal_date": idx[i],
+                "signal_date": df.index[i],
                 "entry_date": entry_date,
-                "entry_price": float(entry_price),
+                "entry_price": entry_price,
                 "exit_date": exit_date,
-                "exit_price": float(exit_price),
+                "exit_price": exit_price,
                 "gross_ret": float(gross_ret),
                 "ret_d1": float(ret_d1.iloc[i]),
             }

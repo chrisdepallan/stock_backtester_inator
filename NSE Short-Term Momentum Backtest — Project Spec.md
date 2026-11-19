@@ -181,8 +181,8 @@ The most common way a backtest like this lies is look-ahead bias, so it gets its
 - [x] `pytest` passes, including a cost test that matches Zerodha's calculator for one known trade to within ₹1 (hand-derived from the published formula; still needs cross-check against the live calculator)
 - [x] Look-ahead test: changing any price after day-1 close does not change that day's signal
 - [x] Leverage test: a −21% move at 5x gives a wipe-out with loss above 100% of margin
-- [ ] Same config and seed always give identical summary.csv
-- [ ] `mbt fetch && mbt sweep && mbt report` runs end to end and writes report.md with a verdict
+- [x] Same config and seed always give identical summary.csv (verified by diffing two sweep runs)
+- [ ] `mbt fetch && mbt sweep && mbt report` runs end to end and writes report.md with a verdict (verified on a 3-ticker smoke config; full NIFTY 50 run pending)
 
 **Build order for Claude Code** (one step per session or commit):
 
@@ -192,7 +192,7 @@ The most common way a backtest like this lies is look-ahead bias, so it gets its
 4. [x] `backtest.py` for variant A at 1x, no costs.
 5. [x] `costs.py` with the cost test.
 6. [x] Variants B, C and D, and `leverage.py` with its tests.
-7. [ ] `baseline.py` (random entries and index).
-8. [ ] `metrics.py`, `mbt sweep`, in-sample/out-of-sample split.
-9. [ ] `report.py` and the verdict rule.
+7. [x] `baseline.py` (random entries and index).
+8. [x] `metrics.py`, `mbt sweep`, in-sample/out-of-sample split.
+9. [x] `report.py` and the verdict rule.
 10. [ ] Run on the full NIFTY 50 and read the report.
